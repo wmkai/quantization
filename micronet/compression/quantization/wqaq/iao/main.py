@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+#IAO是Integer-Arithmetic-Only的缩写
 import sys
 sys.path.append("../../../..")
 import os
@@ -18,7 +18,7 @@ from torch.nn import init
 from models import nin_gc, nin, resnet
 
 import quantize
-
+import pdb
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -91,7 +91,7 @@ def train(epoch):
         output = model(data)
         loss = criterion(output, target)
 
-        # PTQ doesn't need backward
+        # PTQ doesn't need backward,PTQ不需要反向传播，只要前向传播让数据过一遍模型就行
         if not args.ptq_control:
             optimizer.zero_grad()
             loss.backward()
@@ -104,7 +104,7 @@ def train(epoch):
                       optimizer.param_groups[0]['lr']))
         else:
             batch_num += 1
-            if batch_num > args.ptq_batch:
+            if batch_num > args.ptq_batch:#ptq_batch默认为200
                 break
             print('Batch:', batch_num)
     return
@@ -145,7 +145,7 @@ if __name__ == '__main__':
                         help='set if only CPU is available')
     parser.add_argument('--gpu_id', action='store', default='',
                         help='gpu_id')
-    parser.add_argument('--data', action='store', default='../../../../data',
+    parser.add_argument('--data', action='store', default='/data/jdfeng/wmk/cifar10/',
                         help='dataset path')
     parser.add_argument('--lr', action='store', default=0.01,
                         help='the intial learning rate')
@@ -160,8 +160,8 @@ if __name__ == '__main__':
     # resume
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='the path to the resume model')
-    parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--eval_batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--eval_batch_size', type=int, default=256)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--start_epochs', type=int, default=1, metavar='N',
                         help='number of epochs to train_start')
@@ -186,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_observer', type=int, default=0,
                         help='quant_weight_observer:0-MinMaxObserver, 1-MovingAverageMinMaxObserver')
     # pretrained_model标志位
-    parser.add_argument('--pretrained_model', action='store_true',
+    parser.add_argument('--pretrained_model', action='store_true',#在quantize.py中会用到，QuantBNFuseConv2d的forward方法中，如果没有预训练模型，第一次的running_mean和var需要通过batch获得
                         help='pretrained_model')
     # qaft标志位
     parser.add_argument('--qaft', action='store_true',
@@ -210,7 +210,6 @@ if __name__ == '__main__':
                         help='model type:0-nin,1-nin_gc,2-resnet')
     args = parser.parse_args()
     print('==> Options:', args)
-
     if args.gpu_id:
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
@@ -380,7 +379,7 @@ if __name__ == '__main__':
     if args.ptq_control:
         args.end_epochs = 2
         print('ptq is doing...')
-    for epoch in range(args.start_epochs, args.end_epochs):
+    for epoch in range(args.start_epochs, args.end_epochs):#start_epoch默认为1,end_epochs默认为2，所以只进行一次迭代
         adjust_learning_rate(optimizer, epoch)
         train(epoch)
         test()

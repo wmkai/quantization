@@ -11,10 +11,12 @@ from models import nin
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', action='store', default='../../data',
+parser.add_argument('--data', action='store', default='/data/jdfeng/wmk/cifar10/',
                     help='dataset path')
 parser.add_argument('--cpu', action='store_true',
                     help='disables CUDA training')
+parser.add_argument('--gpu_id', action='store', default='',
+                    help='gpu_id')
 # percent(剪枝率)
 parser.add_argument('--percent', type=float, default=0.5,
                     help='nin:0.5')
@@ -34,6 +36,9 @@ args = parser.parse_args()
 base_number = args.normal_regular
 layers = args.layers
 print(args)
+
+if args.gpu_id:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
 if base_number <= 0:
     print('\r\n!base_number is error!\r\n')

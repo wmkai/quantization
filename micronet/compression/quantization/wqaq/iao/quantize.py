@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 from torch.autograd import Function
 
 from micronet.base_module.op import *
-
+import pdb
 
 # ********************* observers(统计min/max) *********************
 class ObserverBase(nn.Module):
@@ -54,11 +54,11 @@ class MinMaxObserver(ObserverBase):
         if self.q_level == 'C':
             min_val_cur.resize_(self.min_val.shape)
             max_val_cur.resize_(self.max_val.shape)
-        if self.num_flag == 0:
+        if self.num_flag == 0:#没有值的时候，不比较大小，直接替换
             self.num_flag += 1
             min_val = min_val_cur
             max_val = max_val_cur
-        else:
+        else:#比较大小
             min_val = torch.min(min_val_cur, self.min_val)
             max_val = torch.max(max_val_cur, self.max_val)
         self.min_val.copy_(min_val)
@@ -84,11 +84,11 @@ class MovingAverageMinMaxObserver(ObserverBase):
         if self.q_level == 'C':
             min_val_cur.resize_(self.min_val.shape)
             max_val_cur.resize_(self.max_val.shape)
-        if self.num_flag == 0:
+        if self.num_flag == 0:#不比较大小，直接替换
             self.num_flag += 1
             min_val = min_val_cur
             max_val = max_val_cur
-        else:
+        else:#滑动平均
             min_val = (1 - self.momentum) * self.min_val + self.momentum * min_val_cur
             max_val = (1 - self.momentum) * self.max_val + self.momentum * max_val_cur
         self.min_val.copy_(min_val)
@@ -108,7 +108,7 @@ class HistogramObserver(nn.Module):
     def forward(self, input):
         # MovingAveragePercentileCalibrator
           # PercentileCalibrator
-        max_val_cur = torch.kthvalue(input.abs().view(-1), int(self.percentile * input.view(-1).size(0)), dim=0)[0]
+        max_val_cur = torch.kthvalue(input.abs().view(-1), int(self.percentile * input.view(-1).size(0)), dim=0)[0]#返回第k大的数
           # MovingAverage
         if self.num_flag == 0:
             self.num_flag += 1
@@ -176,7 +176,7 @@ class Quantizer(nn.Module):
     def forward(self, input):
         if self.bits == 32:
             output = input
-        elif self.bits == 1:
+        elif self.bits == 1:#不支持二值化，二值化的实现在wbwtab里
             print('！Binary quantization is not supported ！')
             assert self.bits != 1
         else:
@@ -217,7 +217,7 @@ class UnsignedQuantizer(Quantizer):
             print('activation_weight_flag error')
 
 # 对称量化
-class SymmetricQuantizer(SignedQuantizer):
+class SymmetricQuantizer(SignedQuantizer):#对称量化继承有符号量化的
     def update_qparams(self):
         self.q_type = 0
         quant_range = float(self.quant_max_val - self.quant_min_val) / 2                                # quantized_range
@@ -229,7 +229,7 @@ class SymmetricQuantizer(SignedQuantizer):
         self.zero_point.copy_(zero_point)
 
 # 非对称量化
-class AsymmetricQuantizer(UnsignedQuantizer):
+class AsymmetricQuantizer(UnsignedQuantizer):#非对称量化继承无符号量化
     def update_qparams(self):
         self.q_type = 1
         quant_range = float(self.quant_max_val - self.quant_min_val)                     # quantized_range
@@ -266,43 +266,43 @@ class QuantConv2d(nn.Conv2d):
         super(QuantConv2d, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups,
                                           bias, padding_mode)
         self.quant_inference = quant_inference
-        if not ptq:
-            if q_type == 0:
-                self.activation_quantizer = SymmetricQuantizer(bits=a_bits, observer=MovingAverageMinMaxObserver(
+        if not ptq:#不是ptq
+            if q_type == 0:#对称量化
+                self.activation_quantizer = SymmetricQuantizer(bits=a_bits, observer=MovingAverageMinMaxObserver(#对于激活值，都使用滑动平均观察min和max，并使用layer-wise量化
                                                             q_level='L', out_channels=None), activation_weight_flag=1, qaft=qaft)
-                if weight_observer == 0:
-                    if q_level == 0:
+                if weight_observer == 0:#对权重，可以直接观察min和max
+                    if q_level == 0:#channel-wise量化
                         self.weight_quantizer = SymmetricQuantizer(bits=w_bits, observer=MinMaxObserver(
                                                                 q_level='C', out_channels=out_channels), activation_weight_flag=0, qaft=qaft)
-                    else:
+                    else:#layer-wise量化
                         self.weight_quantizer = SymmetricQuantizer(bits=w_bits, observer=MinMaxObserver(
                                                                 q_level='L', out_channels=None), activation_weight_flag=0, qaft=qaft)
-                else:
-                    if q_level == 0:
+                else:#对权重，可以使用滑动平均观察min和max
+                    if q_level == 0:#channel-wise量化
                         self.weight_quantizer = SymmetricQuantizer(bits=w_bits, observer=MovingAverageMinMaxObserver(
                                                                 q_level='C', out_channels=out_channels), activation_weight_flag=0, qaft=qaft)
-                    else:
+                    else:#layer-wise量化
                         self.weight_quantizer = SymmetricQuantizer(bits=w_bits, observer=MovingAverageMinMaxObserver(
                                                                 q_level='L', out_channels=None), activation_weight_flag=0, qaft=qaft)
-            else:
-                self.activation_quantizer = AsymmetricQuantizer(bits=a_bits, observer=MovingAverageMinMaxObserver(
+            else:#非对称量化
+                self.activation_quantizer = AsymmetricQuantizer(bits=a_bits, observer=MovingAverageMinMaxObserver(#对于激活值，都使用滑动平均观察min和max，并使用layer-wise量化
                                                                 q_level='L', out_channels=None), activation_weight_flag=1, qaft=qaft)
-                if weight_observer == 0:
-                    if q_level == 0:
+                if weight_observer == 0:#对权重，可以直接观察min和max
+                    if q_level == 0:#channel-wise量化
                         self.weight_quantizer = AsymmetricQuantizer(bits=w_bits, observer=MinMaxObserver(
                                                                     q_level='C', out_channels=out_channels), activation_weight_flag=0, qaft=qaft)
-                    else:
+                    else:#layer-wise量化
                         self.weight_quantizer = AsymmetricQuantizer(bits=w_bits, observer=MinMaxObserver(
                                                                     q_level='L', out_channels=None), activation_weight_flag=0, qaft=qaft)
-                else:
-                    if q_level == 0:
+                else:#对权重，可以使用滑动平均观察min和max
+                    if q_level == 0:#channel-wise量化
                         self.weight_quantizer = AsymmetricQuantizer(bits=w_bits, observer=MovingAverageMinMaxObserver(
                                                                     q_level='C', out_channels=out_channels), activation_weight_flag=0, qaft=qaft)
-                    else:
+                    else:#layer-wise量化
                         self.weight_quantizer = AsymmetricQuantizer(bits=w_bits, observer=MovingAverageMinMaxObserver(
                                                                     q_level='L', out_channels=None), activation_weight_flag=0, qaft=qaft)
-        else:
-            self.activation_quantizer = SymmetricQuantizer(bits=a_bits, observer=HistogramObserver(
+        else:#是ptq
+            self.activation_quantizer = SymmetricQuantizer(bits=a_bits, observer=HistogramObserver(#对于激活值，使用Histogram观察min和max，并使用layer-wise量化
                                                            q_level='L', percentile=percentile), activation_weight_flag=1, qaft=qaft)
             if weight_observer == 0:
                 if q_level == 0:
@@ -499,11 +499,11 @@ class QuantBNFuseConv2d(QuantConv2d):
                 output = F.conv2d(input, self.weight, self.bias, self.stride, self.padding, self.dilation,
                                 self.groups)
                 # 更新BN统计参数（batch和running）
-                dims = [dim for dim in range(4) if dim != 1]
+                dims = [dim for dim in range(4) if dim != 1]#dims=[0,2,3]
                 batch_mean = torch.mean(output, dim=dims)
                 batch_var = torch.var(output, dim=dims)
                 with torch.no_grad():
-                    if not self.pretrained_model:
+                    if not self.pretrained_model:#如果没有预训练模型，可能没有running_mean和running_var
                         if self.num_flag == 0:
                             self.num_flag += 1
                             running_mean = batch_mean
@@ -537,7 +537,7 @@ class QuantBNFuseConv2d(QuantConv2d):
                     bias_fused = reshape_to_bias(self.beta - self.running_mean * (self.gamma / torch.sqrt(self.running_var + self.eps)))  # b融running
                 weight_fused = self.weight * reshape_to_weight(self.gamma / torch.sqrt(self.running_var + self.eps))                      # w融running
         else:
-            #qaft, freeze bn_statis_para
+            #qaft, freeze bn_statis_para，QAFT是不更新BN统计量的
             if self.bias is not None:
                 bias_fused = reshape_to_bias(self.beta + (self.bias - self.running_mean) * (self.gamma / torch.sqrt(self.running_var + self.eps)))
             else:
@@ -816,7 +816,7 @@ def add_quant_op(module, a_bits=8, w_bits=8, q_type=0, q_level=0, weight_observe
     for name, child in module.named_children():
         if isinstance(child, nn.Conv2d):
             if bn_fuse:
-                conv_name_temp = name
+                conv_name_temp = name#把name和child保存为临时变量
                 conv_child_temp = child
             else:
                 if child.bias is not None:
@@ -890,8 +890,8 @@ def add_quant_op(module, a_bits=8, w_bits=8, q_type=0, q_level=0, weight_observe
                 quant_bn_fuse_conv.beta.data = child.bias
                 quant_bn_fuse_conv.running_mean.copy_(child.running_mean)
                 quant_bn_fuse_conv.running_var.copy_(child.running_var)
-                module._modules[conv_name_temp] = quant_bn_fuse_conv
-                module._modules[name] = nn.Identity()
+                module._modules[conv_name_temp] = quant_bn_fuse_conv#把原conv层替换为conv_bn
+                module._modules[name] = nn.Identity()#把原bn层从计算图里删去
         elif isinstance(child, nn.ConvTranspose2d):
             if child.bias is not None:
                 quant_conv_transpose = QuantConvTranspose2d(child.in_channels,

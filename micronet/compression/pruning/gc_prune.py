@@ -11,10 +11,12 @@ from models import nin_gc
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', action='store', default='../../data',
+parser.add_argument('--data', action='store', default='/data/jdfeng/wmk/cifar10/',
                     help='dataset path')
 parser.add_argument('--cpu', action='store_true',
                     help='disables CUDA training')
+parser.add_argument('--gpu_id', action='store', default='',
+                    help='gpu_id')
 parser.add_argument('--percent', type=float, default=0.4,
                     help='nin_gc:0.4')
 parser.add_argument('--layers', type=int, default=9,
@@ -24,6 +26,9 @@ parser.add_argument('--model', default='models_save/nin_gc_preprune.pth', type=s
 args = parser.parse_args()
 layers = args.layers
 print(args)
+
+if args.gpu_id:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
 model = nin_gc.Net()
 if args.model:

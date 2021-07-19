@@ -30,8 +30,8 @@ class BinaryActivation(Function):
         #******************soft_ste*****************
         size = input.size()
         zeros = torch.zeros(size).cuda()
-        grad = torch.max(zeros, 1 - torch.abs(input))
-        grad_input = grad_output * grad
+        grad = torch.max(zeros, 1 - torch.abs(input))  把input绝对值≥1的部分梯度值0
+        grad_input = grad_output * grad  点乘
         '''
         return grad_input
 
@@ -257,7 +257,7 @@ def add_quant_op(module, layer_counter, layer_num, A=2, W=2,
                          quant_inference=quant_inference)
 
 
-def prepare(model, inplace=False, A=2, W=2, quant_inference=False):
+def prepare(model, inplace=False, A=2, W=2, quant_inference=False):#对layer_counter和layer_num进行初始化，并调用add_quant_op方法。
     if not inplace:
         model = copy.deepcopy(model)
     layer_counter = [0]
